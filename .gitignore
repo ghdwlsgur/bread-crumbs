@@ -1,9 +1,0 @@
-# Mac
-.DS_Store
-
-# flask 
-__pycache__
-include
-lib
-bin
-pyvenv.cfg
