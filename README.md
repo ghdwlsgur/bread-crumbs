@@ -47,58 +47,63 @@ CREATE TABLE PAGE (
 );
 ```
 
-### 주요 비즈니스 로직
+### 비즈니스 로직
 
 ```python
-conn = None
-# 트리 인스턴스 생성
-tree = Tree()
+class GetPage(Resource):
+  @ns.doc(response={
+    200: 'Success',
+    404: 'Page Not Found'
+  })
+  @ns.marshal_with(res_model)
+  @ns.doc(description="페이지를 조회합니다.")
+  def get(self, id) -> ResponseData:
+    conn = None
+    tree = Tree()
 
-try:
-  # 데이터베이스 연결
-  conn = Database.get_connection(config)
-  with conn.cursor() as cursor:
-    # 쿼리문 (전체 데이터 조회)
-    query = """
-    SELECT id, title, content, parent_page_id FROM PAGE
-    """
-    cursor.execute(query)
-    # 데이터 조회 결과를 page_list에 저장
-    page_list = cursor.fetchall()
-    # page_list 순회하면서 트리 노드 생성
-    for page in page_list:
-      page_id = page['id']
-      title = page['title']
-      content = page['content']
-      parent_page_id = page['parent_page_id']
+    try:
+      conn = Database.get_connection(config)
+      with conn.cursor() as cursor:
+        query = """
+        SELECT id, title, content, parent_page_id FROM PAGE
+        """
+        cursor.execute(query)
+        page_list = cursor.fetchall()
 
-      # 트리 노드 생성
-      tree.create_node(page_id, title, content)
-      # 부모 페이지가 존재할 경우 하위 페이지와 부모 페이지간 연결 관계 생성
-      if parent_page_id:
-        tree.connect_node(parent_page_id, page_id)
+        # 모든 페이지 노드 생성
+        for page in page_list:
+          page_id = page['id']
+          title = page['title']
+          content = page['content']
+          tree.create_node(page_id, title, content)
 
-  # 현재 노드 지정
-  curr_node = tree.get_node(id)
+        # 생성한 노드 중 부모 노드와 자식 노드 연결
+        for page in page_list:
+          page_id = page['id']
+          parent_page_id = page['parent_page_id']
+          if parent_page_id:
+            tree.connect_node(parent_page_id, page_id)
 
-  # 트리 노드에 현재 노드가 없을 경우 404 반환
-  if not curr_node:
-    response_data = ResponseData(404, None, None, None, None, None)
-    return response_data.to_dict(), 404
+      # 현재 노드 할당
+      curr_node = tree.get_node(id)
+      # 현재 노드가 존재하지 않을 경우 404 반환
+      if not curr_node:
+        response_data = ResponseData(404, None, None, None, None, None)
+        return response_data.to_dict(), 404
 
-  # 트리 노드에 현재 노드가 존재할 경우
-  # bread_crumbs와 서브 페이지 생성
-  bread_crumbs = [node.id for node in tree.get_breadcrumbs(curr_node)]
-  sub_pages = [sub_page.id for sub_page in curr_node.sub_page]
+      # 현재 노드의 브레드크럼브 가져오기
+      bread_crumbs = [node.id for node in tree.get_breadcrumbs(curr_node)]
+      # 현재 노드의 서브 페이지 가져오기
+      sub_pages = [sub_page.id for sub_page in curr_node.sub_page]
 
-  response_data = ResponseData(200, curr_node.id, curr_node.title, curr_node.content, sub_pages, bread_crumbs)
-  return response_data.to_dict(), 200
+      response_data = ResponseData(200, curr_node.id, curr_node.title, curr_node.content, sub_pages, bread_crumbs)
+      return response_data.to_dict(), 200
 
-except Exception as e:
-  return e
-finally:
-  if conn:
-    conn.close()
+    except Exception as e:
+      return e
+    finally:
+      if conn:
+        conn.close()
 ```
 
 ### Response Data
