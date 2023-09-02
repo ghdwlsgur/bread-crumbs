@@ -1,9 +1,10 @@
 from typing import List
-from flask_restx import Resource, Namespace, reqparse
-from .bread_crumbs_api_models import req_model
+from flask_restx import Resource, Namespace
+from .bread_crumbs_api_models import res_model
 from . import config
 import uuid 
 import pymysql 
+
 
 class Node:
   def __init__(self, id: str, title: str, content: str):
@@ -78,10 +79,8 @@ class ResponseData:
     }
 
 
-parser = reqparse.RequestParser()    
-parser.add_argument('title', type=str, required=True)
-parser.add_argument('content', type=str, required=True)
-parser.add_argument('parent_page_id', type=str, required=False)
+
+
 ns = Namespace("page")
 
 @ns.route("/<string:id>")
@@ -91,8 +90,9 @@ class GetPage(Resource):
     200: 'Success',
     404: 'Page Not Found'
   })
+  @ns.marshal_with(res_model)
   @ns.doc(description="페이지를 조회합니다.")
-  def get(self, id):    
+  def get(self, id) -> ResponseData:    
     conn = None 
     tree = Tree()
     
@@ -104,13 +104,16 @@ class GetPage(Resource):
         """
         cursor.execute(query)
         page_list = cursor.fetchall()
+        
         for page in page_list:
           page_id = page['id']
           title = page['title']
-          content = page['content']
-          parent_page_id = page['parent_page_id']
-          
+          content = page['content']          
           tree.create_node(page_id, title, content)
+        
+        for page in page_list: 
+          page_id = page['id']
+          parent_page_id = page['parent_page_id']
           if parent_page_id:
             tree.connect_node(parent_page_id, page_id)
             
@@ -132,34 +135,38 @@ class GetPage(Resource):
         conn.close()
                       
   
-  
 @ns.route("")
 class CreatePage(Resource):
   @ns.doc(responses={
     200: 'Success'
-  })
-  @ns.expect(req_model)
-  @ns.doc(description="페이지를 생성합니다.")
-  def post(self):
-    args = parser.parse_args()
-    id: str = uuid.uuid4()
-    title: str = args.get('title')
-    content: str = args.get('content')       
-    parent_page_id = args.get('parent_page_id', None)         
-
+  })    
+  @ns.doc(description="테스트 데이터 저장")
+  def post(self) -> ResponseData:
+    # 5 -> 4 -> 2, 3 
+    datas = [
+      {"id": 1, "title": "Title1", "content": "Content1", "parent_page_id": None},
+      {"id": 2, "title": "Title1", "content": "Content1", "parent_page_id": 4},      
+      {"id": 3, "title": "Title1", "content": "Content1", "parent_page_id": 4},
+      {"id": 4, "title": "Title1", "content": "Content1", "parent_page_id": 5},
+      {"id": 5, "title": "Title1", "content": "Content1", "parent_page_id": None},
+    ]    
+    
     conn = None
     try:
       conn = Database.get_connection(config)
-      with conn.cursor() as cursor:              
-        query = """
-        INSERT INTO PAGE (id, title, content, parent_page_id)
-        VALUES (%s, %s, %s, %s)      
-        """        
-        cursor.execute(query, (id, title, content, parent_page_id))
-        conn.commit()      
+      with conn.cursor() as cursor:                      
+        for data in datas:
+          query = """
+          INSERT INTO PAGE (id, title, content, parent_page_id)
+          VALUES (%s, %s, %s, %s)      
+          """                
+          cursor.execute(query, (data["id"], data["title"], data["content"], data["parent_page_id"]))        
+        conn.commit()                                     
+      return 200
     except Exception as e:
       if conn:
-        conn.rollback()
+        conn.rollback()        
+      print(str(e))
     finally:
       if conn:
         conn.close()    
